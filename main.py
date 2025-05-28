@@ -59,13 +59,12 @@ kml_root = etree.Element("kml", xmlns="http://www.opengis.net/kml/2.2")
 doc = etree.SubElement(kml_root, "Document")
 
 polygon = None
-
 for feature in data:
     if feature['geometry']['type'] == 'Polygon':
         coords = feature['geometry']['coordinates'][0]
         polygon = Polygon(coords)
         polygon = orient(polygon)
-        break 
+        break
 
 if polygon is None:
     print("❌ Nenhum Polygon encontrado no arquivo.")
@@ -79,9 +78,9 @@ radius_modes = []
 for feature in data:
     if feature['geometry']['type'] == 'Point':
         coords = feature['geometry']['coordinates']
-        origin_point = (coords[0], coords[1]) 
+        origin_point = (coords[0], coords[1])  # (lat, lng) <-------- Se der erro precisa inverter esse 0 e 1 (as vezes a Saipos envia invertido no object)
         radius_modes = feature['properties'].get('radius_mode', [])
-        break  
+        break
 
 if origin_point is None:
     print("❌ Nenhum Point com radius_mode encontrado.")
@@ -90,38 +89,42 @@ if origin_point is None:
 print(f"✅ Coordenadas originais do Point: {coords}")
 print(f"✅ Origin Point (lat, lng): {origin_point}")
 
-doc.append(point_to_kml("Centro do Raio", origin_point))
+# doc.append(point_to_kml("Centro do Raio", origin_point))
 print(f"✅ Ponto de origem adicionado: {origin_point}")
 
-for idx, item in enumerate(radius_modes):
+max_radius_per_fee = {}
+
+for item in radius_modes:
     radius = item.get('radius')
     delivery_fee = item.get('delivery_fee')
 
     if radius is None or delivery_fee is None:
-        print(f"⚠️ Pulo: item {idx} sem radius ou delivery_fee: {item}")
+        print(f"⚠️ Pulo: item sem radius ou delivery_fee: {item}")
         continue
 
     try:
         radius = float(radius)
         delivery_fee = str(delivery_fee)
     except Exception as e:
-        print(f"⚠️ Pulo: item {idx} erro de conversão: {e}")
+        print(f"⚠️ Pulo: erro de conversão: {e}")
         continue
 
-    circle = create_circle(origin_point, radius)
+    if delivery_fee not in max_radius_per_fee or radius > max_radius_per_fee[delivery_fee]:
+        max_radius_per_fee[delivery_fee] = radius
 
+for delivery_fee, radius in max_radius_per_fee.items():
+    circle = create_circle(origin_point, radius)
     intersec = polygon.intersection(circle)
 
     if intersec.is_empty:
-        print(f"Raio de {radius} km não cabe, pulando.")
+        print(f"❌ Raio de {radius} km (delivery_fee {delivery_fee}) não cabe, pulando.")
         continue
 
     name_with_fee = f"{int(radius)}KM - {delivery_fee}"
-
     add_polygon_to_kml(name_with_fee, intersec, doc)
     print(f"✅ {name_with_fee} adicionado.")
 
 tree = etree.ElementTree(kml_root)
-tree.write("final_kml_com_fees.kml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
+tree.write("italin-saipos.kml", pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
-print("✅ KML gerado: final_kml_com_fees.kml")
+print("✅ KML gerado: italin-saipos.kml")
